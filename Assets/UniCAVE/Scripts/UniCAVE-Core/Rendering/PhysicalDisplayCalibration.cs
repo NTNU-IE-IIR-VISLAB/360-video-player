@@ -12,22 +12,82 @@
 //IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 //TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-
 using System;
-using System.Text;
-using System.Xml.Linq;
 using System.Collections.Generic;
-using System.Collections;
-using UnityEngine;
 using System.IO;
+using System.Text;
+using UnityEngine;
 #if UNITY_EDITOR
-using UnityEditor.SceneManagement;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 #endif
 
 [RequireComponent(typeof(PhysicalDisplay))]
 public class PhysicalDisplayCalibration : MonoBehaviour
 {
+    private static string getConfigFolder() {
+        RealtimeCalibrator[] found = UnityEngine.Object.FindObjectsOfType<RealtimeCalibrator>();
+        if(found.Length == 1) {
+            return found[0].configsFolder;
+        }
+        return "configs/";
+    }
+
+    /// <summary>
+    /// Holds the numer of the post processing layer used
+    /// for rendering the post processing (dewarp rendering)
+    /// </summary>
+    [SerializeField, Layer]
+    [Tooltip("The layer where post processing should be rendered")]
+    public int postProcessLayer = 10;
+
+    /// <summary>
+    /// Offset for placing render textures in the world.
+    /// </summary>
+    /// <returns>vector 3 position</returns>
+    public static Vector3 globalPostOffset = new Vector3(0.0f, 0.0f, 0.0f);
+
+    /// <summary>
+    /// The display ratio for the display
+    /// this calibration is attached to.
+    /// </summary>
+    /// <value>display ratio</value>
+    public float displayRatio
+    {
+        get
+        {
+            return GetComponent<PhysicalDisplay>().windowBounds.width / (float) GetComponent<PhysicalDisplay>().windowBounds.height;
+        }
+    }
+
+    /// <summary>
+    /// Post process material to use for the calibration
+    /// </summary>
+    [Tooltip("This should be an unlit textured material")]
+    public Material postProcessMaterial;
+
+    /// <summary>
+    /// Proportions of screenspace to blend.
+    /// </summary>
+    [Tooltip("Proportion of screenspace to blend")]
+    public float rightBlend, topBlend, leftBlend, bottomBlend;
+
+    /// <summary>
+    /// The resolution the camera will render at before warp correction is applied.
+    /// </summary>
+    /// <returns></returns>
+    [Tooltip("The resolution the camera will render at before warp correction")]
+    public Vector2Int resolution = new Vector2Int(1280, 720);
+
+    public GameObject camChild;
+
+    private Material leftRenderMat, rightRenderMat;
+
+    public List<Camera> postCams = new List<Camera>();
+
+    /// EXTENSIONS HERE
+
+    
 
     /// <summary>
     /// Used to set which head/eye camera we're
@@ -41,55 +101,12 @@ public class PhysicalDisplayCalibration : MonoBehaviour
     }
 
     /// <summary>
-    /// Flag to enable/disable if we want to load the config file
-    /// when the object starts.
-    /// </summary>
-    [Tooltip("Load config file on start")]
-    [SerializeField]
-    private bool loadConfigOnStart = true;
-
-    /// <summary>
-    /// Visual marker instance, displayes the cornber we are curently
-    /// modifying
+    /// Holds the instance for the visual marker, that shows which vertex is beeing modified
     /// </summary>
     private LineRenderer visualMarkerInstance;
 
     /// <summary>
-    /// Offset to where to place the next dewarp
-    /// mesh, so it doesnt collide with other meshes.
-    /// </summary>
-    /// <returns></returns>
-    public static Vector3 globalPostOffset = new Vector3(0.0f, 0.0f, 0.0f);
-
-    /// <summary>
-    /// The display ratio for the the display this 
-    /// calibration is attached to.
-    /// </summary>
-    /// <value></value>
-    public float displayRatio
-    {
-        get
-        {
-            return GetComponent<PhysicalDisplay>().windowBounds.width / (float)GetComponent<PhysicalDisplay>().windowBounds.height;
-        }
-    }
-
-    /// <summary>
-    /// Holds the numer of the post processing layer used
-    /// for rendering the post processing (dewarp rendering)
-    /// </summary>
-    [SerializeField, Layer]
-    [Tooltip("The layer where post processing should be rendered")]
-    private int postProcessLayer;
-
-    /// <summary>
-    /// The material used for dewarping/edge blending
-    /// </summary>
-    [Tooltip("This should be an unlit textured material")]
-    public Material postProcessMaterial;
-
-    /// <summary>
-    /// Positions of the dewarp mesh (corner vertecies)
+    /// Positions of the dewarp mesh vertices
     /// </summary>
     [SerializeField]
     private Dewarp.DewarpMeshPosition dewarpMeshPositions;
@@ -100,20 +117,7 @@ public class PhysicalDisplayCalibration : MonoBehaviour
     /// <typeparam name="HeadCamera">The camera that the warp is respoible for</typeparam>
     /// <typeparam name="Dewarp">The dewarp object</typeparam>
     /// <returns></returns>
-    private Dictionary<HeadCamera, Dewarp> displayWarp = new Dictionary<HeadCamera, Dewarp>();
-
-    /// <summary>
-    /// The proportion of the screenspace to blend with other screens
-    /// </summary>
-    [Tooltip("Proportion of screenspace to blend")]
-    public float rightBlend, topBlend, leftBlend, bottomBlend;
-
-    /// <summary>
-    /// The resolution the camera will render at before warp correction
-    /// </summary>
-    /// <returns></returns>
-    [Tooltip("The resolution the camera will render at before warp correction")]
-    public Vector2Int resolution = new Vector2Int(1280, 720);
+    private Dictionary<HeadCamera, Dewarp> displayCalibrations = new Dictionary<HeadCamera, Dewarp>();
 
     /// <summary>
     /// Holds the display for this calibration
@@ -121,91 +125,19 @@ public class PhysicalDisplayCalibration : MonoBehaviour
     private PhysicalDisplay display;
 
     /// <summary>
-    /// 
+    /// Loads the calibration files from file.
+    /// The folder loaded from is stored in the RealtimeCalibrator class,
+    /// or by default is in a folder called configs relative to pwd
     /// </summary>
-    public GameObject camChild;
-
-    /// <summary>
-    /// Holds the post effect render cameras for the the dewarp meshes
-    /// </summary>
-    /// <typeparam name="Camera"></typeparam>
-    /// <returns></returns>
-    public List<Camera> postCams = new List<Camera>();
-
-    /// <summary>
-    /// Returs the display that this calibration
-    /// handles.
-    /// </summary>
-    /// <returns>the display of this calibration</returns>
-    public PhysicalDisplay GetDisplay()
+    [ContextMenu("Load calibrations from file")]
+    public void LoadCalibrations()
     {
-        return this.display;
-    }
+        string path = getConfigFolder();
+        string fullPath = Path.Combine(path, "WARP - " + Util.ObjectFullName(this.gameObject) + ".conf");
 
-    /// <summary>
-    /// Se
-    /// </summary>
-    /// <param name="vertexIndex"></param>
-    public void SetVisualMarkerVertextPoint(int vertexIndex)
-    {
-        this.SetVisualMarker(this.dewarpMeshPositions.verts[vertexIndex]);
-        // switch (vertexIndex)
-        // {
-        //     case (int)VertexSelectedEnum.TOP_RIGHT:
-        //         this.SetVisualMarker(this.dewarpMeshPositions.upperRightPosition);
-        //         break;
-        //     case (int)VertexSelectedEnum.TOP_LEFT:
-        //         this.SetVisualMarker(this.dewarpMeshPositions.upperLeftPosition);
-        //         break;
-        //     case (int)VertexSelectedEnum.BOTTOM_LEFT:
-        //         this.SetVisualMarker(this.dewarpMeshPositions.lowerLeftPosition);
-        //         break;
-        //     case (int)VertexSelectedEnum.BOTTOM_RIGHT:
-        //         this.SetVisualMarker(this.dewarpMeshPositions.lowerRightPosition);
-        //         break;
-        // }
-    }
-
-    /// <summary>
-    /// Sets the visual marker on the corner that is beeing adjusted.
-    /// Adds the visual multiplier factor based on display ratio.
-    /// </summary>
-    /// <param name="pos">the vertex position</param>
-    private void SetVisualMarker(Vector2 pos)
-    {
-        if (this.visualMarkerInstance == null) return;
-        this.ShowVisualMarker();
-        this.visualMarkerInstance.SetPosition(1, this.visualMarkerInstance.transform.parent.localToWorldMatrix.MultiplyPoint3x4(pos * GetMultiplierFactor()));
-    }
-
-    /// <summary>
-    /// Hids the visual marker
-    /// </summary>
-    public void HideVisualMarker()
-    {
-        this.visualMarkerInstance?.gameObject.SetActive(false);
-    }
-
-    /// <summary>
-    /// Display the visual marker
-    /// </summary>
-    public void ShowVisualMarker()
-    {
-        this.visualMarkerInstance?.gameObject.SetActive(true);
-    }
-
-    /// <summary>
-    /// Loads the warp positions for the this calibration
-    /// </summary>
-    [ContextMenu("Load Warp File")]
-    public void LoadWarpFile()
-    {
-        string path = "configs/" + this.gameObject.name;
-        string fullPath = $"./{path}/WARP-" + Util.ObjectFullName(gameObject) + ".conf";
-#if UNITY_EDITOR
-        Debug.Log("Loading warp file \"" + fullPath + "\"");
-        if (File.Exists(fullPath))
-        {
+        // LOADS THE WARP VERTICES CALIBRATIONS
+        if (File.Exists(fullPath)) {
+            Debug.Log("Loading warp calibration \"" + fullPath + "\"");
             string content = File.ReadAllText(fullPath);
             string[] lines = content.Split('\n');
             List<Vector3> vecs = new List<Vector3>();
@@ -215,7 +147,7 @@ public class PhysicalDisplayCalibration : MonoBehaviour
                 if (parts.Length > 1)
                 {
                     vecs.Add(new Vector3(float.Parse(parts[0].Replace(',', '.')), float.Parse(parts[1].Replace(',', '.')), float.Parse(parts[2].Replace(',', '.'))));
-                    Debug.Log(new Vector2(float.Parse(parts[0]), float.Parse(parts[1])));
+                    //Debug.Log(new Vector2(float.Parse(parts[0]), float.Parse(parts[1])));
                 }
             }
             this.dewarpMeshPositions.verts = new Vector3[vecs.Count];
@@ -224,126 +156,90 @@ public class PhysicalDisplayCalibration : MonoBehaviour
                 this.dewarpMeshPositions.verts[i] = vecs[i];
             }
         }
-#endif
-
-#if UNITY_EDITOR
-        fullPath = $"./{path}/POS-" + Util.ObjectFullName(gameObject) + ".conf";
-        Debug.Log("Loading POS file \"" + fullPath + "\"");
-        if (File.Exists(fullPath))
+        else
         {
-            string content = File.ReadAllText(fullPath);
-
-            string[] parts = content.Split('|');
-            Debug.Log(parts);
-            if (parts.Length > 1)
-            {
-                this.transform.localPosition = new Vector3(float.Parse(parts[0].Replace(',', '.')), float.Parse(parts[1].Replace(',', '.')), float.Parse(parts[2].Replace(',', '.')));
-            }
-
+            Debug.LogWarning("Warp calibration file could not be found");
         }
 
-        fullPath = $"./{path}/ROT-" + Util.ObjectFullName(gameObject) + ".conf";
-        Debug.Log("Loading ROT file \"" + fullPath + "\"");
-        if (File.Exists(fullPath))
-        {
-            string content = File.ReadAllText(fullPath);
+        // LOADS THE DISPLAYS POSITION CALIBRATIONS
+        //fullPath = Path.Combine(path, "POS - " + Util.ObjectFullName(this.gameObject) + ".conf");
+        //Debug.Log("Loading position calibration \"" + fullPath + "\"");
+        //if (File.Exists(fullPath))
+        //{
+        //    string content = File.ReadAllText(fullPath);
+        //    string[] parts = content.Split('|');
+        //    Debug.Log(parts);
+        //    if (parts.Length > 1)
+        //    {
+        //        this.transform.localPosition = new Vector3(float.Parse(parts[0].Replace(',', '.')), float.Parse(parts[1].Replace(',', '.')), float.Parse(parts[2].Replace(',', '.')));
+        //    }
 
-            string[] parts = content.Split('|');
-            if (parts.Length > 1)
-            {
-                this.transform.localRotation = Quaternion.Euler(float.Parse(parts[0].Replace(',', '.')), float.Parse(parts[1].Replace(',', '.')), float.Parse(parts[2].Replace(',', '.')));
-            }
+        //}
+        //else
+        //{
+        //    Debug.LogWarning("Position calibration file could not be found");
+        //}
 
-        }
+        // LOADS THE DISPLAYS ROTATION CALIBRATIONS
+        //fullPath = Path.Combine(path, "ROT - " + Util.ObjectFullName(this.gameObject) + ".conf");
+        //Debug.Log("Loading rotation calibration \"" + fullPath + "\"");
+        //if (File.Exists(fullPath))
+        //{
+        //    string content = File.ReadAllText(fullPath);
+        //    string[] parts = content.Split('|');
+        //    if (parts.Length > 1)
+        //    {
+        //        this.transform.localRotation = Quaternion.Euler(float.Parse(parts[0].Replace(',', '.')), float.Parse(parts[1].Replace(',', '.')), float.Parse(parts[2].Replace(',', '.')));
+        //    }
+        //}
+        //else
+        //{
+        //    Debug.LogWarning("Rotation calibration file could not be found");
+        //}
+
+#if UNITY_EDITOR 
+        if(!EditorApplication.isPlaying) EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
 #endif
 
-        Debug.Log("LOADING WARP");
-#if UNITY_EDITOR
-        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
-#endif
-
-        // else
-        // {
-        //     Debug.Log("Warp file does not exist...");
-        // }
     }
 
     /// <summary>
-    /// Saves the warp positions for the this calibration
+    /// Saves the Warp, rotation and position calibrations to file.
+    /// The folder loaded from is stored in the RealtimeCalibrator class,
+    /// or by default is in a folder called configs relative to pwd
     /// </summary>
-    [ContextMenu("Save Warp File")]
+    [ContextMenu("Save calibrations to file")]
     public void SaveWarpFile()
     {
-        string path = "configs/" + this.gameObject.name;
+        string path = getConfigFolder();
         Directory.CreateDirectory(path); // returns a DirectoryInfo object
         StringBuilder strBuilder = new StringBuilder();
         foreach (var vert in this.dewarpMeshPositions.verts)
         {
             strBuilder.Append(vert.x + "|" + vert.y + "|" + vert.z + "\n");
         }
-        // File.WriteAllText($"./{path}/WARP-" + Util.ObjectFullName(this.gameObject) + ".conf",
-        //     this.dewarpMeshPositions.upperRightPosition.x + "," + this.dewarpMeshPositions.upperRightPosition.y + "\n" +
-        //     this.dewarpMeshPositions.upperLeftPosition.x + "," + this.dewarpMeshPositions.upperLeftPosition.y + "\n" +
-        //     this.dewarpMeshPositions.lowerLeftPosition.x + "," + this.dewarpMeshPositions.lowerLeftPosition.y + "\n" +
-        //     this.dewarpMeshPositions.lowerRightPosition.x + "," + this.dewarpMeshPositions.lowerRightPosition.y);
-        File.WriteAllText($"./{path}/WARP-" + Util.ObjectFullName(this.gameObject) + ".conf", strBuilder.ToString());
 
-        File.WriteAllText($"./{path}/POS-" + Util.ObjectFullName(this.gameObject) + ".conf",
-        this.transform.localPosition.x + "|" + this.transform.localPosition.y + "|" + this.transform.localPosition.z);
+        File.WriteAllText(Path.Combine(path, "WARP - " + Util.ObjectFullName(this.gameObject) + ".conf"), strBuilder.ToString());
 
+        File.WriteAllText(Path.Combine(path, "POS - " + Util.ObjectFullName(this.gameObject) + ".conf"),
+            this.transform.localPosition.x + "|" + this.transform.localPosition.y + "|" + this.transform.localPosition.z);
 
-        File.WriteAllText($"./{path}/ROTGLOBAL-" + Util.ObjectFullName(this.gameObject) + ".conf",
+        File.WriteAllText(Path.Combine(path, "ROTGLOBAL - " + Util.ObjectFullName(this.gameObject) + ".conf"),
             transform.rotation.x + "|" + transform.rotation.y + "|" + transform.rotation.z);
 
-        File.WriteAllText($"./{path}/ROT-" + Util.ObjectFullName(this.gameObject) + ".conf",
+        File.WriteAllText(Path.Combine(path, "ROT - " + Util.ObjectFullName(this.gameObject) + ".conf"),
             transform.localEulerAngles.x + "|" + transform.localEulerAngles.y + "|" + transform.localEulerAngles.z);
     }
 
-    public void MoveDisplay(Vector3 pos)
-    {
-        Debug.Log(pos);
-        this.transform.position += pos;
-    }
-
-    public void RotateDisplay(Vector3 rot)
-    {
-        Debug.Log(rot);
-        this.transform.Rotate(rot);
-    }
-
-
-    /// <summary>
-    /// Returns a dictionary of <c>Dewarp</c> object(s)
-    /// with the respnsible camera as key and Dewarp objext as value.
-    /// </summary>
-    /// <returns>dictionary of calibration meshes</returns>
-    public Dictionary<HeadCamera, Dewarp> GetDisplayWarps()
-    {
-        return this.displayWarp;
-    }
-
-    /// <summary>
-    /// Returns the <c>Dewarp</c> object(s) only for
-    /// this calibration.
-    /// </summary>
-    /// <returns></returns>
-    public IEnumerable<Dewarp> GetDisplayWarpsValues()
-    {
-        return this.displayWarp.Values;
-    }
-
-    /// <summary>
-    /// Initialize the post processing setup.
-    /// Setup game objects for the dewarp/edge blend effects for 
-    /// each camera for the attaached <c>PhysicalDisplay</c>
-    /// </summary>
     void SetupPostProcessing()
     {
+        PhysicalDisplay display = GetComponent<PhysicalDisplay>();
         GameObject staticParent = new GameObject("Post Holder For: " + gameObject.name);
 
-        int length = this.dewarpMeshPositions.verts.Length;
+        // Apply multiplier factor on all vertices
+        int numVertices = this.dewarpMeshPositions.verts.Length;
         Vector3[] verts = this.dewarpMeshPositions.verts;
-        for (int i = 0; i < length; i++)
+        for (int i = 0; i < numVertices; i++)
         {
             verts[i] *= GetMultiplierFactor();
         }
@@ -354,7 +250,7 @@ public class PhysicalDisplayCalibration : MonoBehaviour
         {
             if (this.GetDisplay().leftCam != null)
             {
-                this.displayWarp.Add(HeadCamera.LEFT, new Dewarp(gameObject.name, this.postProcessMaterial, dewarpMeshPositions, this.GetDisplay().leftTex));
+                this.displayCalibrations.Add(HeadCamera.LEFT, new Dewarp(gameObject.name, this.postProcessMaterial, dewarpMeshPositions, this.GetDisplay().leftTex));
                 this.RemovePostProcessingFromHeadCamera(this.GetDisplay().leftCam);
             }
             else
@@ -364,7 +260,7 @@ public class PhysicalDisplayCalibration : MonoBehaviour
 
             if (this.GetDisplay().rightCam != null)
             {
-                this.displayWarp.Add(HeadCamera.RIGHT, new Dewarp(gameObject.name, this.postProcessMaterial, dewarpMeshPositions, this.GetDisplay().rightTex));
+                this.displayCalibrations.Add(HeadCamera.RIGHT, new Dewarp(gameObject.name, this.postProcessMaterial, dewarpMeshPositions, this.GetDisplay().rightTex));
                 this.RemovePostProcessingFromHeadCamera(this.GetDisplay().rightCam);
             }
             else
@@ -375,15 +271,15 @@ public class PhysicalDisplayCalibration : MonoBehaviour
         else
         {
             stereo = false;
-            this.displayWarp.Add(HeadCamera.CENTER, new Dewarp(gameObject.name, this.postProcessMaterial, dewarpMeshPositions, this.GetDisplay().centerTex));
+            this.displayCalibrations.Add(HeadCamera.CENTER, new Dewarp(gameObject.name, this.postProcessMaterial, dewarpMeshPositions, this.GetDisplay().centerTex));
             this.RemovePostProcessingFromHeadCamera(this.GetDisplay().centerCam);
         }
 
         this.SetDewarpPositions(stereo);
 
-        foreach (var warp in this.displayWarp)
+        foreach (var displayCalibration in this.displayCalibrations)
         {
-            GameObject obj = warp.Value.GetDewarpGameObject();
+            GameObject obj = displayCalibration.Value.GetDewarpGameObject();
             obj.layer = this.postProcessLayer;
             obj.transform.parent = staticParent.transform;
         }
@@ -410,32 +306,31 @@ public class PhysicalDisplayCalibration : MonoBehaviour
     }
 
     /// <summary>
-    /// Sets the positions for the dewarp meshes
-    /// added to <c>displayWarp</c> dictionary
+    /// Sets the position of the dewarp calibration
+    /// game objects in the world.
+    /// And create the visual marker for the calibration at the position.
     /// </summary>
     /// <param name="stereo">true if current display is stereo</param>
     private void SetDewarpPositions(bool stereo)
     {
 
-        //set the positions of the dewarping mesh children
-        //we have to do this later because if its not stereo only one exists and it should be at the center of the screen
-        if (this.displayWarp.ContainsKey(HeadCamera.LEFT))
+        if (this.displayCalibrations.ContainsKey(HeadCamera.LEFT))
         {
-            Transform trans = this.displayWarp[HeadCamera.LEFT].GetDewarpGameObject().transform;
+            Transform trans = this.displayCalibrations[HeadCamera.LEFT].GetDewarpGameObject().transform;
             trans.localPosition = globalPostOffset + new Vector3(stereo ? -displayRatio * 2.0f : 0.0f, 0.0f, 0.0f);
             this.CreateVisualMarker(trans);
         }
 
-        if (this.displayWarp.ContainsKey(HeadCamera.RIGHT))
+        if (this.displayCalibrations.ContainsKey(HeadCamera.RIGHT))
         {
-            Transform trans = this.displayWarp[HeadCamera.RIGHT].GetDewarpGameObject().transform;
+            Transform trans = this.displayCalibrations[HeadCamera.RIGHT].GetDewarpGameObject().transform;
             trans.localPosition = globalPostOffset + new Vector3(stereo ? displayRatio * 2.0f : 0.0f, 0.0f, 0.0f);
             this.CreateVisualMarker(trans);
         }
 
-        if (this.displayWarp.ContainsKey(HeadCamera.CENTER))
+        if (this.displayCalibrations.ContainsKey(HeadCamera.CENTER))
         {
-            Transform trans = this.displayWarp[HeadCamera.CENTER].GetDewarpGameObject().transform;
+            Transform trans = this.displayCalibrations[HeadCamera.CENTER].GetDewarpGameObject().transform;
             trans.localPosition = globalPostOffset + new Vector3(0.0f, 0.0f, 0.0f);
             this.CreateVisualMarker(trans);
         }
@@ -443,21 +338,17 @@ public class PhysicalDisplayCalibration : MonoBehaviour
     }
 
     /// <summary>
-    /// Creates the visual marker when calibrating
+    /// Removes post processing layer from head/eye camera, so we dont
+    /// see the post processing/dewarp meshes in the head/eye camera when we render to
+    /// the post processing mesh. And set StereoTargetEyeMask to none. 
     /// </summary>
-    /// <param name="parent">the parent of the marker</param>
-    private void CreateVisualMarker(Transform parent)
+    /// <param name="camera">the head camera</param>
+    private void RemovePostProcessingFromHeadCamera(Camera camera)
     {
-        GameObject render = new GameObject("Visual renderer");
-        render.layer = this.postProcessLayer;
-        render.transform.parent = parent;
-
-        this.visualMarkerInstance = render.AddComponent<LineRenderer>();
-        this.visualMarkerInstance.useWorldSpace = false;
-
-        Vector3[] pos = { parent.transform.position + new Vector3(0, 0, -.1f), parent.transform.localPosition };
-        this.visualMarkerInstance.SetPositions(pos);
-        this.visualMarkerInstance.startWidth = 0.008f;
+        camera.cullingMask &= ~(1 << this.postProcessLayer); //remove post processing layer of the worldspace camera
+        Vector3 oldPos = camera.transform.localPosition;
+        camera.stereoTargetEye = StereoTargetEyeMask.None;
+        camera.transform.localPosition = oldPos;
     }
 
     /// <summary>
@@ -481,6 +372,44 @@ public class PhysicalDisplayCalibration : MonoBehaviour
     }
 
     /// <summary>
+    /// Returs the display that this calibration
+    /// handles.
+    /// </summary>
+    /// <returns>the display of this calibration</returns>
+    public PhysicalDisplay GetDisplay()
+    {
+        return this.display;
+    }
+
+    /// <summary>
+    /// Calculates the vertext muliplier factor based on the display ratio
+    /// for the display
+    /// </summary>
+    /// <returns>Mulitplier factor for vertex position</returns>
+    private Vector2 GetMultiplierFactor()
+    {
+        return new Vector2(this.displayRatio, 1.0f);
+    }
+
+    /// <summary>
+    /// Creates the visual marker when calibrating
+    /// </summary>
+    /// <param name="parent">the parent of the marker</param>
+    private void CreateVisualMarker(Transform parent)
+    {
+        GameObject render = new GameObject("Visual renderer");
+        render.layer = this.postProcessLayer;
+        render.transform.parent = parent;
+
+        this.visualMarkerInstance = render.AddComponent<LineRenderer>();
+        this.visualMarkerInstance.useWorldSpace = false;
+
+        Vector3[] pos = { parent.transform.position + new Vector3(0, 0, -.1f), parent.transform.localPosition };
+        this.visualMarkerInstance.SetPositions(pos);
+        this.visualMarkerInstance.startWidth = 0.008f;
+    }
+
+    /// <summary>
     /// Updats the dewarp/edgeblend mesh edge vertecies positions
     /// after a mesh has been modified.
     /// </summary>
@@ -494,43 +423,80 @@ public class PhysicalDisplayCalibration : MonoBehaviour
                 this.dewarpMeshPositions.verts[i] = new Vector3(localVertex.x / this.displayRatio, localVertex.y, localVertex.z);
                 i++;
             }
-            // this.dewarpMeshPositions.upperRightPosition = new Vector3(vertex[0].x / this.displayRatio, vertex[0].y);
-            // this.dewarpMeshPositions.upperLeftPosition = new Vector3(vertex[1].x / this.displayRatio, vertex[1].y);
-            // this.dewarpMeshPositions.lowerLeftPosition = new Vector3(vertex[2].x / this.displayRatio, vertex[2].y);
-            // this.dewarpMeshPositions.lowerRightPosition = new Vector3(vertex[3].x / this.displayRatio, vertex[3].y);
             this.SaveWarpFile();
         }
-
     }
 
     /// <summary>
-    /// Removes post processing layer from head/eye camera, so we dont
-    /// get the post processing meshes in the head/eye camera when we render to
-    /// the post processing mesh. And set StereoTargetEyeMask to none. 
+    /// Returns the <c>Dewarp</c> display calibrations object(s) for
+    /// the display.
     /// </summary>
-    /// <param name="camera">the head camera</param>
-    private void RemovePostProcessingFromHeadCamera(Camera camera)
+    /// <returns></returns>
+    public IEnumerable<Dewarp> GetDisplayWarpsValues()
     {
-        camera.cullingMask &= ~(1 << this.postProcessLayer); //remove post processing layer of the worldspace camera
-        Vector3 oldPos = camera.transform.localPosition;
-        camera.stereoTargetEye = StereoTargetEyeMask.None;
-        camera.transform.localPosition = oldPos;
+        return this.displayCalibrations.Values;
     }
 
+#region CALIBRATIONS
+
     /// <summary>
-    /// Calculates the vertext muliplier factor based on the display ratio
-    /// for the display
+    /// Move the display by given amount.
     /// </summary>
-    /// <returns>Mulitplier factor for vertex position</returns>
-    private Vector2 GetMultiplierFactor()
+    /// <param name="pos">position to add to current position</param>
+    public void MoveDisplay(Vector3 pos)
     {
-        return new Vector2(displayRatio, 1.0f);
+        this.transform.position += pos;
     }
 
     /// <summary>
-    /// Draws a line (blue/red) representing the blending
-    /// of the calibration. 
+    /// Rotates the display by given amount.
     /// </summary>
+    /// <param name="rot">rotation to add to current rotation</param>
+    public void RotateDisplay(Vector3 rot)
+    {
+        this.transform.Rotate(rot);
+    }
+
+    /// <summary>
+    /// Se
+    /// </summary>
+    /// <param name="vertexIndex"></param>
+    public void SetVisualMarkerVertextPoint(int vertexIndex)
+    {
+        if(vertexIndex < this.dewarpMeshPositions.verts.Length)
+        this.SetVisualMarker(this.dewarpMeshPositions.verts[vertexIndex]);
+    }
+
+    /// <summary>
+    /// Move the visual marker to the the given vector position.
+    /// Adds the visual multiplier factor based on display ratio (to match vertices positions).
+    /// </summary>
+    /// <param name="pos">the vertex position</param>
+    private void SetVisualMarker(Vector2 pos)
+    {
+        if (this.visualMarkerInstance == null) return;
+        this.ShowVisualMarker();
+        this.visualMarkerInstance.SetPosition(1, this.visualMarkerInstance.transform.parent.localToWorldMatrix.MultiplyPoint3x4(pos * GetMultiplierFactor()));
+    }
+
+    /// <summary>
+    /// Hids the visual marker
+    /// </summary>
+    public void HideVisualMarker()
+    {
+        this.visualMarkerInstance?.gameObject.SetActive(false);
+    }
+
+    /// <summary>
+    /// Display the visual marker
+    /// </summary>
+    public void ShowVisualMarker()
+    {
+        this.visualMarkerInstance?.gameObject.SetActive(true);
+    }
+
+#endregion
+
     void OnDrawGizmosSelected()
     {
 #if UNITY_EDITOR
@@ -569,28 +535,9 @@ public class PhysicalDisplayCalibration : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Returns initialized flag (true if initialized)
-    /// </summary>
-    /// <returns>initialized flag</returns>
     public bool Initialized()
     {
         return initialized;
-    }
-
-    /// <summary>
-    /// Loads warp files only if we have checked <c>loadConfigOnStart</c> and
-    /// we are not in the editor
-    /// </summary>
-    void Awake()
-    {
-#if !UNITY_EDITOR
-		if (this.loadConfigOnStart)
-		{
-			this.LoadWarpFile();
-		}
-#endif
-
     }
 
     void Start()
@@ -606,13 +553,13 @@ public class PhysicalDisplayCalibration : MonoBehaviour
     }
 
     private bool initialized = false;
-
     void Update()
     {
         if (!initialized)
         {
-            if (this.display.Initialized())
+            if (GetComponent<PhysicalDisplay>().Initialized())
             {
+                LoadCalibrations();
                 SetupPostProcessing();
                 initialized = true;
             }

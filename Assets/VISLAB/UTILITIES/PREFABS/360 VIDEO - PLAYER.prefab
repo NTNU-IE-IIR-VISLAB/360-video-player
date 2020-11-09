@@ -11,7 +11,6 @@ GameObject:
   - component: {fileID: 7860310516323101024}
   - component: {fileID: 7860310516323101039}
   - component: {fileID: 7860310516323101026}
-  - component: {fileID: 7860310516323101025}
   - component: {fileID: 40919615}
   m_Layer: 0
   m_Name: 360 VIDEO - PLAYER
@@ -101,22 +100,6 @@ MonoBehaviour:
     i15: 0
   m_ServerOnly: 0
   m_LocalPlayerAuthority: 0
---- !u!114 &7860310516323101025
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7860310516323101038}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a237e01a7c7e49644af8048fe5d54051, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  maxPlaybackRatio: 1.5
-  scrubWhenPlaying: 1
-  scrubThreshold: 1
-  convergenceRate: 1
 --- !u!114 &40919615
 MonoBehaviour:
   m_ObjectHideFlags: 0

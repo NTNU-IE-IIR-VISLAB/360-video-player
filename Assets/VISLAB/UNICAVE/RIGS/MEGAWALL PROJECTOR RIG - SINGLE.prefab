@@ -57,9 +57,9 @@ MonoBehaviour:
   dualPipe: 0
   dualInstance: 0
   windowBounds:
-    x: 2499
+    x: 2421
     y: 0
-    width: 833
+    width: 807
     height: 1920
   leftViewport:
     x: 0
@@ -84,7 +84,6 @@ GameObject:
   - component: {fileID: 3513363445914986774}
   - component: {fileID: 3513363445914986775}
   - component: {fileID: 3513363445914986768}
-  - component: {fileID: 870177224}
   m_Layer: 0
   m_Name: MEGAWALL PROJECTOR RIG - SINGLE
   m_TagString: Untagged
@@ -155,27 +154,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   head: {fileID: 3513363447373900648}
-  launchScript: "# Windows Powershell Launch Script\n# Script Generated On Friday,
-    November 6, 2020, 11:16:38 PM\n# Setup contains 12 displays and 1 display managers\n\n#
-    Display Group: PROJECTORS\nIf ($env:ComputerName -eq 'VISLAB-1') {\n\t& 'Unity-360-video.exe'
-    -screen-fullscreen 0 -popupwindow \n}"
   settingsToLoad: RunConfig.txt
---- !u!114 &870177224
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3513363445914986769}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9a3e5f51e31f79c4fb340e92ffc286e8, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  speedNormal: 10
-  speedFast: 40
-  mouseSensitivityX: 4
-  mouseSensitivityY: 4
 --- !u!1 &3513363446064960804
 GameObject:
   m_ObjectHideFlags: 0
@@ -233,9 +212,9 @@ MonoBehaviour:
   dualPipe: 0
   dualInstance: 0
   windowBounds:
-    x: 1666
+    x: 1614
     y: 0
-    width: 833
+    width: 807
     height: 1920
   leftViewport:
     x: 0
@@ -308,7 +287,7 @@ MonoBehaviour:
   windowBounds:
     x: 0
     y: 0
-    width: 833
+    width: 807
     height: 1920
   leftViewport:
     x: 0
@@ -365,10 +344,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6bbb13f3601696f429cf6980abfdb409, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  camPrefab: {fileID: 0}
   leftEyeOffset: {x: 0, y: 0, z: 0}
   rightEyeOffset: {x: 0, y: 0, z: 0}
   nearClippingPlane: 0.01
-  farClippingPlane: 650
+  farClippingPlane: 1000
 --- !u!1 &3513363447517942924
 GameObject:
   m_ObjectHideFlags: 0
@@ -425,7 +405,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   machineName: VISLAB-1
-  displayNumber: 6
+  fullscreen: 1
+  displayNumber: 0
+  displayResolution: {x: 9684, y: 1920}
   displays:
   - {fileID: 3513363447115949993}
   - {fileID: 3513363447666827707}
@@ -602,9 +584,9 @@ MonoBehaviour:
   dualPipe: 0
   dualInstance: 0
   windowBounds:
-    x: 833
+    x: 807
     y: 0
-    width: 833
+    width: 807
     height: 1920
   leftViewport:
     x: 0
@@ -675,9 +657,9 @@ MonoBehaviour:
   dualPipe: 0
   dualInstance: 0
   windowBounds:
-    x: 4165
+    x: 4035
     y: 0
-    width: 833
+    width: 807
     height: 1920
   leftViewport:
     x: 0
@@ -748,9 +730,9 @@ MonoBehaviour:
   dualPipe: 0
   dualInstance: 0
   windowBounds:
-    x: 6664
+    x: 6456
     y: 0
-    width: 833
+    width: 807
     height: 1920
   leftViewport:
     x: 0
@@ -821,9 +803,9 @@ MonoBehaviour:
   dualPipe: 0
   dualInstance: 0
   windowBounds:
-    x: 8330
+    x: 8070
     y: 0
-    width: 833
+    width: 807
     height: 1920
   leftViewport:
     x: 0
@@ -894,9 +876,9 @@ MonoBehaviour:
   dualPipe: 0
   dualInstance: 0
   windowBounds:
-    x: 4998
+    x: 4842
     y: 0
-    width: 833
+    width: 807
     height: 1920
   leftViewport:
     x: 0
@@ -967,9 +949,9 @@ MonoBehaviour:
   dualPipe: 0
   dualInstance: 0
   windowBounds:
-    x: 3332
+    x: 3228
     y: 0
-    width: 833
+    width: 807
     height: 1920
   leftViewport:
     x: 0
@@ -1040,9 +1022,9 @@ MonoBehaviour:
   dualPipe: 0
   dualInstance: 0
   windowBounds:
-    x: 9163
+    x: 8877
     y: 0
-    width: 833
+    width: 807
     height: 1920
   leftViewport:
     x: 0
@@ -1113,9 +1095,9 @@ MonoBehaviour:
   dualPipe: 0
   dualInstance: 0
   windowBounds:
-    x: 7497
+    x: 7263
     y: 0
-    width: 833
+    width: 807
     height: 1920
   leftViewport:
     x: 0
@@ -1186,9 +1168,9 @@ MonoBehaviour:
   dualPipe: 0
   dualInstance: 0
   windowBounds:
-    x: 5831
+    x: 5649
     y: 0
-    width: 833
+    width: 807
     height: 1920
   leftViewport:
     x: 0
